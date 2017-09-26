@@ -1,6 +1,7 @@
 #include <windows.h>
 
 #include <iostream>
+#include <cmath>
 #include "pxccursorconfiguration.h"
 #include "pxccursordata.h"
 #include "pxchandconfiguration.h"
@@ -21,6 +22,16 @@ PXCHandConfiguration *g_handConfiguration;
 PXCHandCursorModule *g_handCursorModule;
 PXCCursorData *g_cursorDataOutput;
 PXCCursorConfiguration *g_cursorConfiguration;
+
+PXCPoint3DF32 LeftSide1 = {0.089525f, -0.039210f, 0.427518f }; // TopLeft
+PXCPoint3DF32 LeftSide2 = {0.089967f, -0.047948f, 0.317896f }; // TopRight
+PXCPoint3DF32 LeftSide3 = {0.130838f, -0.109801f, 0.444585f }; // BottomLeft
+PXCPoint3DF32 LeftSide4 = {0.096176f, -0.121912f, 0.330914f }; // BottomRight
+
+PXCPoint3DF32 pointSum = { 0 };
+uint32_t pointCount = 0;
+
+bool g_test = true;
 
 void releaseAll();
 
@@ -149,6 +160,13 @@ int EnableCursorTracking(void)
 	return 0;
 }
 
+float distance(PXCPoint3DF32 a, PXCPoint3DF32 b)
+{
+	return std::sqrt(std::pow((a.x - b.x), 2)
+		+ std::pow((a.y - b.y), 2)
+		+ std::pow((a.z - b.z), 2));
+}
+
 void PrintCursorInfo(void)
 {
 	// Get current hand outputs
@@ -160,12 +178,43 @@ void PrintCursorInfo(void)
 			g_cursorDataOutput->QueryCursorData(PXCCursorData::ACCESS_ORDER_BY_TIME, i, cursor);
 			std::string handSide = "Unknown Hand";
 			handSide = cursor->QueryBodySide() == PXCHandData::BODY_SIDE_LEFT ? "Left Hand Cursor" : "Right Hand Cursor";
+			
+			PXCPoint3DF32 currentCursor = cursor->QueryCursorWorldPoint();
 
-			//std::printf("%s\n==============\n", handSide.c_str());
-			//std::printf("Cursor Image Point: X: %f, Y: %f \n", cursor->QueryCursorImagePoint().x, cursor->QueryCursorImagePoint().y);
-			std::printf("Cursor World Point: X: %f, Y: %f, Z: %f \n", cursor->QueryCursorWorldPoint().x, cursor->QueryCursorWorldPoint().y, cursor->QueryCursorWorldPoint().z);
-			//std::printf("Cursor Engagement status: %d%c \n\n", cursor->QueryEngagementPercent(), '%');
+			float d1, d2, d3, d4, min;
+			if (g_test)
+			{
+				d1 = distance(LeftSide1, currentCursor);
+				d2 = distance(LeftSide2, currentCursor);
+				min = d1 < d2 ? d1 : d2;
+				d3 = distance(LeftSide3, currentCursor);
+				min = d3 < min ? d3 : min;
+				d4 = distance(LeftSide4, currentCursor);
+				min = d4 < min ? d4 : min;
+
+				if (min == d1)
+					std::printf("LeftSide1\n");
+				else if (min == d2)
+					std::printf("LeftSide2\n");
+				else if (min == d3)
+					std::printf("LeftSide3\n");
+				else if (min == d4)
+					std::printf("LeftSide4\n");
+			}
+			else
+			{
+				//std::printf("%s\n==============\n", handSide.c_str());
+				//std::printf("Cursor Image Point: X: %f, Y: %f \n", cursor->QueryCursorImagePoint().x, cursor->QueryCursorImagePoint().y);
+				pointSum.x += cursor->QueryCursorWorldPoint().x;
+				pointSum.y += cursor->QueryCursorWorldPoint().y;
+				pointSum.z += cursor->QueryCursorWorldPoint().z;
+				pointCount++;
+				//std::printf("Cursor World Point: X: %f, Y: %f, Z: %f \n", cursor->QueryCursorWorldPoint().x, cursor->QueryCursorWorldPoint().y, cursor->QueryCursorWorldPoint().z);
+				//std::printf("Cursor Engagement status: %d%c \n\n", cursor->QueryEngagementPercent(), '%');
+			}
 		}
+
+		
 	}
 }
 
@@ -196,6 +245,7 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
 
 int main(int argc, char* argv[])
 {
+	// Set Callback to handle Console Windows operations
 	SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
 
    	// Setup
@@ -217,6 +267,20 @@ int main(int argc, char* argv[])
 
 	EnableCursorTracking();
 
+	std::wstring path;
+	std::string tmp(argv[1]);
+
+	path.clear();
+	path.assign(tmp.begin(), tmp.end());
+
+	if (g_senseManager->QueryCaptureManager()->SetFileName(path.c_str(), false) != PXC_STATUS_NO_ERROR)
+	{
+		releaseAll();
+		std::printf("Error: Invalid Sequence/ Sequence path\n");
+		return 1;
+	}
+	g_senseManager->QueryCaptureManager()->SetRealtime(false);
+
 	// First Initializing the sense manager
 	if (g_senseManager->Init() == PXC_STATUS_NO_ERROR)
 	{
@@ -226,8 +290,12 @@ int main(int argc, char* argv[])
 		while (g_senseManager->AcquireFrame(true) == PXC_STATUS_NO_ERROR && !g_stop)
 		{
 			PrintCursorInfo();
-
 			g_senseManager->ReleaseFrame();
+		}
+
+		if (g_test == false)
+		{
+			std::printf("Average Point: X: %f, Y: %f, Z: %f \n", pointSum.x / pointCount, pointSum.y / pointCount, pointSum.z / pointCount);
 		}
 	}
     return 0;
