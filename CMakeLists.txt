@@ -11,7 +11,7 @@ if(WIN32)
     link_directories($ENV{RSSDK_DIR}/lib/Win32)
 endif()
 
-add_executable(HandPointing main.cpp)
+add_executable(HandPointing main.cpp HandPointing.cpp)
 target_link_libraries(HandPointing libpxcmd)
 
 MESSAGE(STATUS "PlatformName:             " $ENV{PlatformName} )
