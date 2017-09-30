@@ -17,3 +17,5 @@ target_link_libraries(HandPointing libpxcmd)
 MESSAGE(STATUS "PlatformName:             " $ENV{PlatformName} )
 MESSAGE(STATUS "CMAKE_DEBUG_POSTFIX:      " ${CMAKE_DEBUG_POSTFIX} )
 
+add_subdirectory(test)
+
