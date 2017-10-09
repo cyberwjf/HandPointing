@@ -34,6 +34,3 @@ target_link_libraries(handpointing_test
 
 add_test(all_tests handpointing_test)
 
-add_custom_target(run_tests COMMAND ${CMAKE_CTEST_COMMAND}
-    DEPENDS tiny_dnn_test)
-

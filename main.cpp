@@ -19,8 +19,7 @@
 
 bool g_stop = false;	// user closes application
 
-PXCSession *g_session;
-PXCSenseManager *g_senseManager;
+
 PXCHandModule *g_handModule;
 PXCHandData *g_handDataOutput;
 PXCHandConfiguration *g_handConfiguration;
@@ -33,13 +32,6 @@ PXCPoint3DF32 LeftSide2 = { 0.111002f, -0.046654f, 0.319506f };
 PXCPoint3DF32 LeftSide3 = { 0.144047f, -0.114175f, 0.454760f };
 PXCPoint3DF32 LeftSide4 = { 0.103986f, -0.132723f, 0.323677f };
 
-/*
-PXCPoint3DF32 LeftSide1 = {0.089525f, -0.039210f, 0.427518f }; // TopLeft
-PXCPoint3DF32 LeftSide2 = {0.089967f, -0.047948f, 0.317896f }; // TopRight
-PXCPoint3DF32 LeftSide3 = {0.130838f, -0.109801f, 0.444585f }; // BottomLeft
-PXCPoint3DF32 LeftSide4 = {0.096176f, -0.121912f, 0.330914f }; // BottomRight
-*/
-
 std::vector<uint32_t> g_counter(4);
 
 PXCPoint3DF32 pointSum = { 0 };
@@ -49,15 +41,14 @@ uint32_t g_frameCount = 0;
 uint32_t g_id = 0;
 
 bool g_test = true;
-bool g_live = true;
+bool g_live = false;
 bool g_alerts = true;
 
 std::wstring g_sequencePath;
 
 int main(int argc, char * argv[]);
 
-void releaseAll();
-
+/*
 void EnableFullHandTracking(void)
 {
 	if (g_senseManager->EnableHand(0) != PXC_STATUS_NO_ERROR)
@@ -110,6 +101,7 @@ void EnableFullHandTracking(void)
 
 	std::printf("-Skeleton Information Enabled-\n");
 }
+*/
 
 void PrintFullHandInfo(void)
 {
@@ -134,56 +126,6 @@ void PrintFullHandInfo(void)
 			}
 		}
 	}
-}
-
-int EnableCursorTracking(void)
-{
-	// Enable cursor tracking
-	if (g_senseManager->EnableHandCursor() != PXC_STATUS_NO_ERROR)
-	{
-		releaseAll();
-		std::printf("Failed EnableHandCursor\n");
-		return 1;
-	}
-
-	// Get an instance of PXCHandCursorModule 
-	g_handCursorModule = g_senseManager->QueryHandCursor();
-	if (!g_handCursorModule)
-	{
-		releaseAll();
-		std::printf("Failed QueryHandCursor\n");
-		return 1;
-	}
-
-	g_cursorDataOutput = g_handCursorModule->CreateOutput();
-	if (!g_cursorDataOutput)
-	{
-		releaseAll();
-		std::printf("Failed Creating PXCCursorData\n");
-		return 1;
-	}
-
-	// Get an instance of PXCCursorConfiguration
-	g_cursorConfiguration = g_handCursorModule->CreateActiveConfiguration();
-	if (!g_cursorConfiguration)
-	{
-		releaseAll();
-		std::printf("Failed Creating Cursor Configuration\n");
-		return 1;
-	}
-
-	std::printf("-Alerts Are Enabled-\n");
-	g_cursorConfiguration->EnableAlert(PXCCursorData::CURSOR_DETECTED | PXCCursorData::CURSOR_NOT_DETECTED);
-
-	// Make configuration changes and apply them
-	//g_cursorConfiguration->EnableEngagement(true);
-
-	// g_cursorConfiguration->EnableAllGestures();
-
-	// бн set other configuration options
-	g_cursorConfiguration->ApplyChanges(); // Changes only take effect when you call ApplyChanges
-
-	return 0;
 }
 
 float distance(PXCPoint3DF32 a, PXCPoint3DF32 b)
@@ -292,6 +234,8 @@ void CursorInfoHandler(void)
 	}
 }
 
+HandPointing g_pointingModel;
+
 BOOL CtrlHandler(DWORD fdwCtrlType)
 {
 	switch (fdwCtrlType)
@@ -303,7 +247,7 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
 	case CTRL_CLOSE_EVENT:
 		g_stop = true;
 		Sleep(1000);
-		releaseAll();
+		g_pointingModel.release();
 		return(TRUE);
 
 	default:
@@ -311,31 +255,9 @@ BOOL CtrlHandler(DWORD fdwCtrlType)
 	}
 }
 
-std::vector<PXCPoint3DF32> readModel(const char *filename)
-{
-	std::vector<PXCPoint3DF32> result(4);
 
-	std::ifstream myfile;
-	PXCPoint3DF32 point;
 
-	myfile.open(filename, std::ios::in | std::ios::binary);
-	do {
-		myfile.read((char *)&point, sizeof(PXCPoint3DF32));
-		result.push_back(point);
-	} while (myfile.eof() == false);
-	myfile.close();
-
-	return result;
-}
-
-void writeModel(const char *filename, DirectionModel model)
-{
-	std::ofstream myfile;
-	myfile.open(filename, std::ios::out | std::ios::app | std::ios::binary);
-	myfile.write((const char *)&(model.centerPoint), sizeof(model.centerPoint));
-	myfile.write((const char *)&(model.id), sizeof(model.id));
-	myfile.close();
-}
+char * g_dataFileName = nullptr;
 
 /**
  * main - Main Entry of this project.
@@ -358,18 +280,22 @@ int main(int argc, char* argv[])
 		if (strcmp(argv[i], "-train") == 0)
 		{
 			g_test = false;
+
+			g_dataFileName = argv[i + 1];
 		}
 
 		if (strcmp(argv[i], "-test") == 0)
 		{
 			g_test = true;
+
+			g_dataFileName = argv[i + 1];
 		}
 
 		if (strcmp(argv[i], "-seq") == 0)
 		{
 			if (argc == i + 1)
 			{
-				releaseAll();
+				g_pointingModel.release();
 				std::printf("Error: Sequence path is missing\n");
 				return 1;
 			}
@@ -388,116 +314,47 @@ int main(int argc, char* argv[])
 
 	}
 
-	if (g_test == true) {
-		//readModel("model.bin");
-	}
-
-   	// Setup
-	g_session = PXCSession::CreateInstance();
-	if(!g_session)
+	if (g_test == true) 
 	{
-		std::printf("Failed Creating PXCSession\n");
-		return 1;
-	}
+		g_pointingModel.loadModel(g_dataFileName);
 
-    // Create an instance of the SenseManager
-    g_senseManager = g_session->CreateSenseManager();
-    if(g_senseManager == nullptr)
-    {
-		releaseAll();
-        std::printf("Failed Creating PXCSenseManager\n");
-        return 1;
-    }
+		g_pointingModel.createInstance();
+		g_pointingModel.enableCursorTracking();
 
-	EnableCursorTracking();
-
-	if (!g_live)
-	{
-		if (g_senseManager->QueryCaptureManager()->SetFileName(g_sequencePath.c_str(), false) != PXC_STATUS_NO_ERROR)
+		if (g_live == true)
 		{
-			releaseAll();
-			std::printf("Error: Invalid Sequence/ Sequence path\n");
-			return 1;
+
 		}
-		g_senseManager->QueryCaptureManager()->SetRealtime(false);
 	}
-
-	// First Initializing the sense manager
-	if (g_senseManager->Init() == PXC_STATUS_NO_ERROR)
+	else
 	{
-		std::printf("\nPXCSenseManager Initializing OK\n========================\n");
-
-		// Acquiring frames from input device
-		while (g_senseManager->AcquireFrame(true) == PXC_STATUS_NO_ERROR && !g_stop)
+		if (g_live == false)
 		{
-			// Display alerts
-			if (g_alerts)
+			std::vector<std::string> files = { "1.rssdk", "2.rssdk", "3.rssdk", "4.rssdk" };
+			g_pointingModel.trainModel(files);
+		}
+		else
+		{
+			int direction_cnt = 0;
+			std::cout << "How many directions you want to classify?" << std::endl;
+			std::cin >> direction_cnt;
+			std::cout << direction_cnt << " directions!" << std::endl;
+
+			for (int i = 1; i <= direction_cnt; i++)
 			{
-				PXCCursorData::AlertData alertData;
-				for (int i = 0; i < g_cursorDataOutput->QueryFiredAlertsNumber(); ++i)
-				{
-					if (g_cursorDataOutput->QueryFiredAlertData(i, alertData) == PXC_STATUS_NO_ERROR)
-					{
-						std::printf("%s was fired at frame %d \n", Definitions::CursorAlertToString(alertData.label).c_str(), alertData.frameNumber);
-					}
-				}
+				std::cout << "Please show camera your right hand and pointing to " << i << " direction" << std::endl;
+				g_pointingModel.createInstance();
+				g_pointingModel.enableCursorTracking();
+				g_pointingModel.fitRawData(nullptr, i);
 			}
-			CursorInfoHandler();
-			g_senseManager->ReleaseFrame();
 		}
 
 		if (g_test == false)
 		{
-			std::printf("Center Point = {%ff, %ff, %ff}\n", pointSum.x / pointCount, pointSum.y / pointCount, pointSum.z / pointCount);
-
-			DirectionModel model;
-			model.centerPoint = { pointSum.x / pointCount, pointSum.y / pointCount, pointSum.z / pointCount };
-			model.id = g_id;
-
-			writeModel("model.bin", model);
+			g_pointingModel.saveModel(g_dataFileName);
 		}
-
-		g_senseManager->Close();
 	}
+
     return 0;
 }
 
-void releaseAll()
-{
-	if(g_handConfiguration)
-	{
-		g_handConfiguration->Release();
-		g_handConfiguration = NULL;
-	}
-
-	if(g_cursorConfiguration)
-	{
-		g_cursorConfiguration->Release();
-		g_cursorConfiguration = NULL;
-	}
-
-	if(g_handDataOutput)
-	{
-		g_handDataOutput->Release();
-		g_handDataOutput = NULL;
-	}
-
-	if(g_cursorDataOutput)
-	{
-		g_cursorDataOutput->Release();
-		g_cursorDataOutput = NULL;
-	}
-
-	if (g_senseManager)
-	{
-		g_senseManager->Close();
-		g_senseManager->Release();
-		g_senseManager = NULL;
-	}
-
-	if(g_session)
-	{
-		g_session->Release();
-		g_session = NULL;
-	}
-}
